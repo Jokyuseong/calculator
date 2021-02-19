@@ -109,9 +109,6 @@ function App() {
               <Form.Group>
                 <Row>
                   <Col>
-                    <Form.Label column lg={2}>
-                      슬랙ID
-                    </Form.Label>
                     <Form.Control
                       type="text"
                       placeholder="이름"
@@ -120,9 +117,6 @@ function App() {
                     />
                   </Col>
                   <Col>
-                    <Form.Label column lg={2}>
-                      이름
-                    </Form.Label>
                     <Form.Control
                       type="text"
                       placeholder="Slack ID"
