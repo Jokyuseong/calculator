@@ -50,7 +50,7 @@ function App() {
     setCookie('sum', tempSum)
     setCookie('calSum', tempCalSum)
     setCookie('values', values)
-  }, [values])
+  }, [setCookie, values])
 
   const usernameInputHandler = (e) => {
     setUsername(e.target.value)
