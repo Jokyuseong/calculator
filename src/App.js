@@ -5,52 +5,69 @@ import {useCookies} from 'react-cookie'
 import './App.css'
 
 const days = ['월', '화', '수', '목', '금']
+const wage = 6000
 
 const comma = (data) => data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
-function postToSlack(channel: string, text: string) {
-  const {WebClient} = require('@slack/client')
-  const web = new WebClient(process.env.REACT_APP_SLACK_TOKEN)
-  return web.chat.postMessage({channel, text})
-}
-
 function App() {
   const [cookies, setCookie] = useCookies(['rememberValues'])
-  const [username, setUsername] = useState('')
-  const [slackId, setSlackId] = useState('')
+  const [username, setUsername] = useState(cookies.username || '')
+  const [slackId, setSlackId] = useState(cookies.slackId || '')
   const [values, setValues] = useState(
     cookies.values || {mon: 0, tue: 0, wed: 0, thu: 0, fri: 0},
   )
-  const [sum, setSum] = useState(0)
-  const [calSum, setCalSum] = useState(0)
+  const [personalValues, setPersonalValues] = useState(
+    cookies.personalValues || {mon: 0, tue: 0, wed: 0, thu: 0, fri: 0},
+  )
+  const [sum, setSum] = useState(cookies.sum || {co: 0, pers: 0})
+  const [calSum, setCalSum] = useState(cookies.calSum || {co: 0, pers: 0})
+  const [slackToken, setSlackToken] = useState(cookies.slackToken || '')
+
+  const setCookies = (tempSum, tempCalSum, type) => {
+    setSum({...tempSum})
+    setCalSum({...tempCalSum})
+    setCookie('sum', {...tempSum})
+    setCookie('calSum', {...tempCalSum})
+    if (type === 'personal') {
+      setCookie('personalValues', personalValues)
+    } else {
+      setCookie('values', values)
+    }
+  }
 
   useEffect(() => {
-    setUsername(cookies.username || '')
-    setSlackId(cookies.slackId || '')
-    setSum(cookies.sum || 0)
-    setCalSum(cookies.calSum || 0)
-    setValues(cookies.values || {mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
-  }, [])
-
-  useEffect(() => {
-    let tempSum = 0
-    let tempCalSum = 0
+    let tempSum = {...sum, co: 0}
+    let tempCalSum = {...calSum, co: 0}
 
     Object.keys(values).forEach((day) => {
-      if (typeof values[day] !== 'number') return
-      let temp = values[day] - 6000
+      if (typeof values[day] !== 'number' || isNaN(values[day])) return
+      let temp = values[day] - wage
       if (temp < 0) temp = 0
 
-      tempSum += values[day]
-      tempCalSum += temp
+      tempSum.co += values[day]
+      tempCalSum.co += temp
     })
 
-    setSum(tempSum)
-    setCalSum(tempCalSum)
-    setCookie('sum', tempSum)
-    setCookie('calSum', tempCalSum)
-    setCookie('values', values)
-  }, [setCookie, values])
+    setCookies(tempSum, tempCalSum, 'coperation')
+  }, [values])
+
+  useEffect(() => {
+    let tempSum = {...sum, pers: 0}
+    let tempCalSum = {...calSum, pers: 0}
+
+    Object.keys(personalValues).forEach((day) => {
+      if (typeof personalValues[day] !== 'number' || isNaN(personalValues[day]))
+        return
+      if (personalValues[day] > wage) {
+        tempCalSum.pers += wage
+      } else {
+        tempCalSum.pers += personalValues[day]
+      }
+      tempSum.pers += personalValues[day]
+    })
+
+    setCookies(tempSum, tempCalSum, 'personal')
+  }, [personalValues])
 
   const usernameInputHandler = (e) => {
     setUsername(e.target.value)
@@ -62,56 +79,106 @@ function App() {
     setCookie('slackId', e.target.value)
   }
 
-  const valueInputHandler = (value, day) => {
-    setValues({...values, [day]: value})
+  const valueInputHandler = (value, day, target) => {
+    if (day === 'token') {
+      setSlackToken(value)
+      setCookie('slackToken', value)
+      return
+    }
+    if (target === 'personal') {
+      setPersonalValues({...personalValues, [day]: value})
+    } else {
+      setValues({...values, [day]: value})
+    }
   }
 
   const sendButtonOnClickHandler = async () => {
     try {
       if (!username) {
         throw new Error('이름을 입력해주세요.')
-      } else if (!sum) {
-        throw new Error('값을 확인해주세요.')
+      } else if (!sum.co && !sum.pers) {
+        throw new Error('전송할 내용이 없습니다.')
       } else if (!slackId) {
         throw new Error('슬랙 아이디를 확인해주세요.')
+      } else if (!slackToken) {
+        throw new Error('슬랙 토큰을 확인해주세요.')
       }
     } catch (err) {
       alert(err.message)
       return
     }
 
-    const toSendMessage = `${username} / ${sum} / ${calSum}`
+    let personalTypeMessage = ''
+    let corporationTypeMessage = ''
+    if (sum.pers > 0) {
+      personalTypeMessage = `[개인카드] ${username} / 총지출: ${sum.pers} / 회사부담: ${calSum.pers}`
+    }
+    if (sum.co > 0) {
+      corporationTypeMessage = `[법인카드] ${username} / 총지출: ${sum.co} / 개인부담: ${calSum.co}`
+    }
 
-    if (window.confirm(`${toSendMessage} 전송하시겠습니까?`)) {
+    function postToSlack(channel, text) {
+      const {WebClient} = require('@slack/client')
+      const web = new WebClient(slackToken)
+      return web.chat.postMessage({channel, text})
+    }
+
+    if (
+      window.confirm(
+        `${personalTypeMessage} \n${corporationTypeMessage} \n전송하시겠습니까?`,
+      )
+    ) {
       try {
-        await postToSlack(
-          process.env.REACT_APP_SLACK_ID,
-          `${toSendMessage}         <@${slackId}>`,
-        )
-        await postToSlack(slackId, `${toSendMessage} 전송되었습니다.`)
+        if (sum.pers > 0) {
+          await postToSlack(
+            'UKPCGGH0B',
+            `${personalTypeMessage}         <@${slackId}>`,
+          )
+          await postToSlack(slackId, `${personalTypeMessage} 전송되었습니다.`)
+        }
+        if (sum.co > 0) {
+          await postToSlack(
+            'UKPCGGH0B',
+            `${corporationTypeMessage}         <@${slackId}>`,
+          )
+          await postToSlack(
+            slackId,
+            `${corporationTypeMessage} 전송되었습니다.`,
+          )
+        }
       } catch (err) {
         console.error(err)
         alert('메시지 전송 실패!')
         return
       }
       setValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
+      setPersonalValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
     } else {
-      console.log('취소')
+      console.error('전송취소')
     }
   }
 
   return (
-    <Container className="mt-5">
+    <Container className="mt-2">
       <Row className="justify-content-center align-self-center">
         <Col lg={6}>
           <Card bg="Light">
             <Card.Body>
               <Form.Group>
+                <Form.Control
+                  type="text"
+                  className="mb-3"
+                  placeholder="Slack Token"
+                  value={slackToken}
+                  onInput={(event) =>
+                    valueInputHandler(event.target.value, 'token')
+                  }
+                />
                 <Row>
                   <Col>
                     <Form.Control
                       type="text"
-                      placeholder="이름"
+                      placeholder="Slack ID"
                       value={slackId}
                       onInput={slackIdInputHandler}
                     />
@@ -119,31 +186,70 @@ function App() {
                   <Col>
                     <Form.Control
                       type="text"
-                      placeholder="Slack ID"
+                      placeholder="이름"
                       value={username}
                       onInput={usernameInputHandler}
                     />
                   </Col>
                 </Row>
-                {Object.keys(values).map((day, i) => (
-                  <div>
-                    <Form.Label column lg={2}>
-                      {days[i]}
-                    </Form.Label>
-                    <Form.Control
-                      type="number"
-                      value={values[day]}
-                      onFocus={() => valueInputHandler('', day)}
-                      onInput={(event) =>
-                        valueInputHandler(parseInt(event.target.value), day)
-                      }
-                    />
-                  </div>
-                ))}
+                <hr />
+                <Row>
+                  <Col>
+                    <p className="text-center">법인</p>
+                    {Object.keys(values).map((day, i) => (
+                      <div>
+                        <Form.Label column lg={2}>
+                          {days[i]}
+                        </Form.Label>
+                        <Form.Control
+                          type="number"
+                          value={values[day]}
+                          onFocus={() => valueInputHandler('', day)}
+                          onInput={(event) =>
+                            valueInputHandler(parseInt(event.target.value), day)
+                          }
+                        />
+                      </div>
+                    ))}
+                  </Col>
+                  <Col>
+                    <p className="text-center">개인</p>
+                    {Object.keys(values).map((day, i) => (
+                      <div>
+                        <Form.Label column lg={2}>
+                          {days[i]}
+                        </Form.Label>
+                        <Form.Control
+                          type="number"
+                          value={personalValues[day]}
+                          onFocus={() => valueInputHandler('', day, 'personal')}
+                          onInput={(event) =>
+                            valueInputHandler(
+                              parseInt(event.target.value),
+                              day,
+                              'personal',
+                            )
+                          }
+                        />
+                      </div>
+                    ))}
+                  </Col>
+                </Row>
               </Form.Group>
             </Card.Body>
             <Card.Footer>
-              {`${username} / ${comma(sum)} / ${comma(calSum)}`}
+              <Row>
+                <Col>
+                  <p>[법인카드] {username}</p>
+                  <p>총지출액: {comma(sum.co)}</p>
+                  <p>개인부담금: {comma(calSum.co)}</p>
+                </Col>
+                <Col>
+                  <p>[개인카드] {username}</p>
+                  <p>총지출액: {comma(sum.pers)}</p>
+                  <p>회사부담금: {comma(calSum.pers)}</p>
+                </Col>
+              </Row>
               <Button
                 className="my-4"
                 onClick={sendButtonOnClickHandler}
