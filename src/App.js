@@ -7,11 +7,19 @@ import './App.css'
 const days = ['월', '화', '수', '목', '금']
 const wage = 6000
 
+const nowDate = new Date()
+const nextYear = new Date()
+
+nextYear.setFullYear(nowDate.getFullYear() + 1)
+
+const options = {expires: nextYear}
+
 const comma = (data) => data.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
 function App() {
   const [cookies, setCookie] = useCookies(['rememberValues'])
   const [username, setUsername] = useState(cookies.username || '')
+  const [textMessage, setTextMessage] = useState(cookies.textMessage || '')
   const [slackId, setSlackId] = useState(cookies.slackId || '')
   const [values, setValues] = useState(
     cookies.values || {mon: 0, tue: 0, wed: 0, thu: 0, fri: 0},
@@ -22,16 +30,17 @@ function App() {
   const [sum, setSum] = useState(cookies.sum || {co: 0, pers: 0})
   const [calSum, setCalSum] = useState(cookies.calSum || {co: 0, pers: 0})
   const [slackToken, setSlackToken] = useState(cookies.slackToken || '')
+  const [isAuth, setIsAuth] = useState(cookies.isAuth || '')
 
   const setCookies = (tempSum, tempCalSum, type) => {
     setSum({...tempSum})
     setCalSum({...tempCalSum})
-    setCookie('sum', {...tempSum})
-    setCookie('calSum', {...tempCalSum})
+    setCookie('sum', {...tempSum}, options)
+    setCookie('calSum', {...tempCalSum}, options)
     if (type === 'personal') {
-      setCookie('personalValues', personalValues)
+      setCookie('personalValues', personalValues, options)
     } else {
-      setCookie('values', values)
+      setCookie('values', values, options)
     }
   }
 
@@ -71,18 +80,23 @@ function App() {
 
   const usernameInputHandler = (e) => {
     setUsername(e.target.value)
-    setCookie('username', e.target.value)
+    setCookie('username', e.target.value, options)
   }
 
   const slackIdInputHandler = (e) => {
     setSlackId(e.target.value)
-    setCookie('slackId', e.target.value)
+    setCookie('slackId', e.target.value, options)
+  }
+
+  const textMessageInputHandler = (value) => {
+    setTextMessage(value)
+    setCookie('textMessage', value, options)
   }
 
   const valueInputHandler = (value, day, target) => {
     if (day === 'token') {
       setSlackToken(value)
-      setCookie('slackToken', value)
+      setCookie('slackToken', value, options)
       return
     }
     if (target === 'personal') {
@@ -92,72 +106,120 @@ function App() {
     }
   }
 
+  function postToSlack(channel, text) {
+    const {WebClient} = require('@slack/client')
+    const web = new WebClient(slackToken)
+    return web.chat.postMessage({channel, text})
+  }
+
   const sendButtonOnClickHandler = async () => {
     try {
-      if (!username) {
-        throw new Error('이름을 입력해주세요.')
-      } else if (!sum.co && !sum.pers) {
+      if (!sum.co && !sum.pers) {
         throw new Error('전송할 내용이 없습니다.')
-      } else if (!slackId) {
-        throw new Error('슬랙 아이디를 확인해주세요.')
-      } else if (!slackToken) {
-        throw new Error('슬랙 토큰을 확인해주세요.')
       }
     } catch (err) {
       alert(err.message)
       return
     }
 
-    let personalTypeMessage = ''
-    let corporationTypeMessage = ''
+    let finalMessage = ''
     if (sum.pers > 0) {
-      personalTypeMessage = `[개인카드] ${username} / 총지출: ${sum.pers} / 회사부담: ${calSum.pers}`
+      finalMessage += `[개인카드] ${username} / 총지출: ${sum.pers} / 회사부담: ${calSum.pers}`
     }
     if (sum.co > 0) {
-      corporationTypeMessage = `[법인카드] ${username} / 총지출: ${sum.co} / 개인부담: ${calSum.co}`
+      if (finalMessage) finalMessage += '\n'
+      finalMessage += `[법인카드] ${username} / 총지출: ${sum.co} / 개인부담: ${calSum.co}`
     }
-
-    function postToSlack(channel, text) {
-      const {WebClient} = require('@slack/client')
-      const web = new WebClient(slackToken)
-      return web.chat.postMessage({channel, text})
+    if (textMessage) {
+      finalMessage += `\n${textMessage}`
     }
-
-    if (
-      window.confirm(
-        `${personalTypeMessage} \n${corporationTypeMessage} \n전송하시겠습니까?`,
-      )
-    ) {
+    if (window.confirm(`${finalMessage}\n전송하시겠습니까?`)) {
       try {
-        if (sum.pers > 0) {
-          await postToSlack(
-            'UKPCGGH0B',
-            `${personalTypeMessage}         <@${slackId}>`,
-          )
-          await postToSlack(slackId, `${personalTypeMessage} 전송되었습니다.`)
+        if (sum.pers > 0 || sum.co > 0) {
+          await postToSlack('UKPCGGH0B', `${finalMessage}\n<@${slackId}>`)
+          await postToSlack(slackId, `${finalMessage} 전송되었습니다.`)
         }
-        if (sum.co > 0) {
-          await postToSlack(
-            'UKPCGGH0B',
-            `${corporationTypeMessage}         <@${slackId}>`,
-          )
-          await postToSlack(
-            slackId,
-            `${corporationTypeMessage} 전송되었습니다.`,
-          )
-        }
+        setValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
+        setPersonalValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
+        setTextMessage('')
+        setCookie('textMessage', '', options)
       } catch (err) {
         console.error(err)
         alert('메시지 전송 실패!')
         return
       }
-      setValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
-      setPersonalValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
     } else {
       console.error('전송취소')
     }
   }
+  const authButtonOnClickHandler = async () => {
+    try {
+      if (!username) {
+        throw new Error('이름을 입력해주세요.')
+      } else if (!slackId) {
+        throw new Error('슬랙 아이디를 확인해주세요.')
+      } else if (!slackToken) {
+        throw new Error('슬랙 토큰을 확인해주세요.')
+      }
+      await postToSlack(slackId, '인증되었습니다.')
+      setIsAuth(true)
+      setCookie('isAuth', true, options)
+    } catch (err) {
+      alert(err.message)
+      return
+    }
+  }
 
+  if (!isAuth) {
+    return (
+      <Container className="mt-2">
+        <Row className="justify-content-center align-self-center">
+          <Col lg={6}>
+            <Card bg="Light" className="mt-5">
+              <Card.Body>
+                <Form.Group>
+                  <Form.Control
+                    type="text"
+                    className="mb-3"
+                    placeholder="Slack Token"
+                    value={slackToken}
+                    onInput={(event) =>
+                      valueInputHandler(event.target.value, 'token')
+                    }
+                  />
+                  <Row>
+                    <Col>
+                      <Form.Control
+                        type="text"
+                        placeholder="Slack ID"
+                        value={slackId}
+                        onInput={slackIdInputHandler}
+                      />
+                    </Col>
+                    <Col>
+                      <Form.Control
+                        type="text"
+                        placeholder="이름"
+                        value={username}
+                        onInput={usernameInputHandler}
+                      />
+                    </Col>
+                  </Row>
+                  <Button
+                    className="my-4"
+                    onClick={authButtonOnClickHandler}
+                    variant="outline-info"
+                    block>
+                    인증
+                  </Button>
+                </Form.Group>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      </Container>
+    )
+  }
   return (
     <Container className="mt-2">
       <Row className="justify-content-center align-self-center">
@@ -165,32 +227,15 @@ function App() {
           <Card bg="Light">
             <Card.Body>
               <Form.Group>
-                <Form.Control
-                  type="text"
-                  className="mb-3"
-                  placeholder="Slack Token"
-                  value={slackToken}
-                  onInput={(event) =>
-                    valueInputHandler(event.target.value, 'token')
-                  }
-                />
                 <Row>
-                  <Col>
-                    <Form.Control
-                      type="text"
-                      placeholder="Slack ID"
-                      value={slackId}
-                      onInput={slackIdInputHandler}
-                    />
-                  </Col>
-                  <Col>
-                    <Form.Control
-                      type="text"
-                      placeholder="이름"
-                      value={username}
-                      onInput={usernameInputHandler}
-                    />
-                  </Col>
+                  <Button
+                    className="ml-auto mr-3"
+                    style={{margin: 0}}
+                    size="sm"
+                    onClick={() => setIsAuth(false)}
+                    variant="outline-danger">
+                    정보수정
+                  </Button>
                 </Row>
                 <hr />
                 <Row>
@@ -250,6 +295,18 @@ function App() {
                   <p>회사부담금: {comma(calSum.pers)}</p>
                 </Col>
               </Row>
+              <hr />
+              <Form.Group>
+                <Form.Label>추가설명</Form.Label>
+                <Form.Control
+                  type="text"
+                  value={textMessage}
+                  placeholder={'설명이 필요한 경우 작성해주세요.'}
+                  onInput={(event) =>
+                    textMessageInputHandler(event.target.value)
+                  }
+                />
+              </Form.Group>
               <Button
                 className="my-4"
                 onClick={sendButtonOnClickHandler}
