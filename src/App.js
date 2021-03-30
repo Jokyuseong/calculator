@@ -3,6 +3,7 @@ import {useEffect, useState} from 'react'
 import {Button, Card, Col, Container, Form, Row} from 'react-bootstrap'
 import {useCookies} from 'react-cookie'
 import './App.css'
+import axios from 'axios'
 
 const days = ['월', '화', '수', '목', '금']
 const wage = 6000
@@ -112,6 +113,22 @@ function App() {
     return web.chat.postMessage({channel, text})
   }
 
+  const getTossLink = async (amount) => {
+    const tossLinkRes = await axios.post(
+      'https://toss.im/transfer-web/linkgen-api/link',
+      {
+        apiKey: '87489d67602649268f4372f91a91b03e',
+        bankName: '기업',
+        bankAccountNo: '54004018301018',
+        message: username,
+        amount,
+      },
+    )
+    const {link} = tossLinkRes.data.success
+    window.open(link)
+    return link
+  }
+
   const sendButtonOnClickHandler = async () => {
     try {
       if (!sum.co && !sum.pers) {
@@ -136,8 +153,15 @@ function App() {
     if (window.confirm(`${finalMessage}\n전송하시겠습니까?`)) {
       try {
         if (sum.pers > 0 || sum.co > 0) {
+          let tossLink
+          if (calSum.co > 0) {
+            tossLink = await getTossLink(calSum.co)
+          }
           await postToSlack('UKPCGGH0B', `${finalMessage}\n<@${slackId}>`)
-          await postToSlack(slackId, `${finalMessage} 전송되었습니다.`)
+          await postToSlack(
+            slackId,
+            `${finalMessage} 전송되었습니다.\n${tossLink}`,
+          )
         }
         setValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
         setPersonalValues({mon: 0, tue: 0, wed: 0, thu: 0, fri: 0})
