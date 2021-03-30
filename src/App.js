@@ -32,6 +32,9 @@ function App() {
   const [calSum, setCalSum] = useState(cookies.calSum || {co: 0, pers: 0})
   const [slackToken, setSlackToken] = useState(cookies.slackToken || '')
   const [isAuth, setIsAuth] = useState(cookies.isAuth || '')
+  const [tossOpenAgree, setTossOpenAgree] = useState(
+    cookies.tossOpenAgree ? parseInt(cookies.tossOpenAgree) : 1,
+  )
 
   const setCookies = (tempSum, tempCalSum, type) => {
     setSum({...tempSum})
@@ -153,8 +156,8 @@ function App() {
     if (window.confirm(`${finalMessage}\n전송하시겠습니까?`)) {
       try {
         if (sum.pers > 0 || sum.co > 0) {
-          let tossLink
-          if (calSum.co > 0) {
+          let tossLink = ''
+          if (calSum.co > 0 && tossOpenAgree) {
             tossLink = await getTossLink(calSum.co)
           }
           await postToSlack('UKPCGGH0B', `${finalMessage}\n<@${slackId}>`)
@@ -252,6 +255,18 @@ function App() {
             <Card.Body>
               <Form.Group>
                 <Row>
+                  <Form.Group className="ml-3" controlId="formBasicCheckbox">
+                    <Form.Check
+                      checked={!!tossOpenAgree}
+                      onChange={() => {
+                        const agree = tossOpenAgree ? 0 : 1
+                        setTossOpenAgree(agree)
+                        setCookie('tossOpenAgree', agree, options)
+                      }}
+                      type="checkbox"
+                      label="토스 송금 열기"
+                    />
+                  </Form.Group>
                   <Button
                     className="ml-auto mr-3"
                     style={{margin: 0}}
@@ -266,7 +281,7 @@ function App() {
                   <Col>
                     <p className="text-center">법인</p>
                     {Object.keys(values).map((day, i) => (
-                      <div>
+                      <div key={day}>
                         <Form.Label column lg={2}>
                           {days[i]}
                         </Form.Label>
@@ -284,7 +299,7 @@ function App() {
                   <Col>
                     <p className="text-center">개인</p>
                     {Object.keys(values).map((day, i) => (
-                      <div>
+                      <div key={day}>
                         <Form.Label column lg={2}>
                           {days[i]}
                         </Form.Label>
