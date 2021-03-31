@@ -264,7 +264,7 @@ function App() {
                         setCookie('tossOpenAgree', agree, options)
                       }}
                       type="checkbox"
-                      label="토스 송금 열기"
+                      label="토스 송금 열기 (모바일 전용)"
                     />
                   </Form.Group>
                   <Button
