@@ -5,6 +5,9 @@ import {useCookies} from 'react-cookie'
 import './App.css'
 import axios from 'axios'
 
+// const managerId = 'UKPCGGH0B'
+const managerId = 'U021K8944CU'
+
 const days = ['월', '화', '수', '목', '금']
 const wage = 6000
 
@@ -110,9 +113,10 @@ function App() {
     }
   }
 
-  function postToSlack(channel, text) {
+  async function postToSlack(channel, text) {
     const {WebClient} = require('@slack/client')
     const web = new WebClient(slackToken)
+
     return web.chat.postMessage({channel, text})
   }
 
@@ -160,7 +164,7 @@ function App() {
           if (calSum.co > 0 && tossOpenAgree) {
             tossLink = await getTossLink(calSum.co)
           }
-          await postToSlack('UKPCGGH0B', `${finalMessage}\n<@${slackId}>`)
+          await postToSlack(managerId, `${finalMessage}\n<@${slackId}>`)
           await postToSlack(
             slackId,
             `${finalMessage} 전송되었습니다.\n${tossLink}`,
@@ -189,6 +193,7 @@ function App() {
         throw new Error('슬랙 토큰을 확인해주세요.')
       }
       await postToSlack(slackId, '인증되었습니다.')
+      console.log('done')
       setIsAuth(true)
       setCookie('isAuth', true, options)
     } catch (err) {
